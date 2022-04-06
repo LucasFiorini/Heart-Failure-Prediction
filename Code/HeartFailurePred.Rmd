@@ -34,12 +34,48 @@ library(caret)
 library(cowplot)
 ```
 
+```{r}
+customSummary <- function (data, lev = NULL, model = NULL){
+  senslist <- as.numeric()
+  preclist <- as.numeric()
+  f1List <- as.numeric()
+  accList <- as.numeric()
+  for(i in seq(0.1, 0.95, 0.05)){
+    predi <- factor(ifelse(data[, "pos"] > i, "pos", "neg"))
+    singlesens <- sensitivity(predi, data[, "obs"], "pos")
+    senslist <- c(senslist, singlesens)
+    
+    cm <- table(data[,"obs"], predi)
+
+    if(sum(dim(cm)) == 4) {
+      recall <- cm[2,2] / (cm[2,1] + cm[2,2])
+      precision <- cm[2,2]/(cm[1,2] + cm[2,2])
+      f1 <- 2 * precision * recall / (precision + recall)
+      acc <- (cm[1,1] + cm[2,2]) / sum(cm)
+      
+      preclist <- c(preclist, precision)
+      f1List <- c(f1List, f1)
+      accList <- c(accList, acc)
+    }
+  }
+  
+  max(senslist) -> sensmax
+  refPrec <- preclist[which(senslist == max(senslist))[1]]
+  refF1 <- f1List[which(senslist == max(senslist))[1]]
+  refAcc <- accList[which(senslist == max(senslist))[1]]
+  out <- c(sensmax, refPrec, refF1, refAcc)
+
+  names(out) <- c("SensMax", "RefPrec", "RefF1", "refAcc")
+  out
+}
+```
+
 ## Data Quality Report 
 
 Reading data and converting some character variables to factor.
 
 ```{r message=FALSE, warning=FALSE}
-heart <- read_csv("~/GitHub/Data-Science-Projects/Heart-Failure-Prediction/heart.csv")
+heart <- read_csv("heart.csv")
 heart$HeartDisease <- as.factor(heart$HeartDisease)
 convert <- c(2,3,7,9,11)
 heart[convert] <- lapply(heart[convert], as.factor)
@@ -113,14 +149,15 @@ Starting with Age variable:
 
 ```{r}
 age <- ggplot(heart, aes(x = HeartDisease, y = Age, group = HeartDisease, fill = HeartDisease)) + geom_boxplot(alpha=0.5) +
-    theme_minimal() + scale_fill_manual(breaks = heart$HeartDisease, values = c("#C9DDFF", "#DE6C83"))
+    theme_minimal() + scale_fill_manual(breaks = heart$HeartDisease, values = c("#C9DDFF", "#DE6C83")) +
+    ggtitle("Age influence for Heat Disease") + theme(plot.title = element_text(hjust = 0.5))
 age
 ```
 A clear importance for the heart disease occurrence. Here, the older, the higher the chances.
 
 ```{r}
 genderDist <- ggplot(heart, aes(x = Sex)) + geom_bar(stat="count", width=0.7, fill="steelblue")+
-  theme_minimal() + ggtitle("Gender distribuition")
+  theme_minimal() + ggtitle("Gender distribuition") + theme(plot.title = element_text(hjust = 0.5))
 genderDist
 ```
 With the gender distribution, we see that there are many more man than women. Therefore, let's look at the proportions.
@@ -135,7 +172,7 @@ df_hd <- df_hd %>%
 df_hd_bar <- ggplot(df_hd, aes(x="", y=freq, fill = sex))+
   geom_bar(width = 1, stat = "identity") +
   labs(title="Percentage of heart diseases among both sexes") +
-  facet_grid(~ sex) + ylab("Percentage")
+  facet_grid(~ sex) + ylab("Percentage") + theme(plot.title = element_text(hjust = 0.5))
 
 df_hd_bar
 
@@ -148,14 +185,14 @@ Here is possible to see that being a man increases the chances of having heart p
 chestPainWithHD <- filter(heart, HeartDisease == 1) %>% group_by(ChestPainType) %>% summarise(count = n())
 ggplot(chestPainWithHD, aes(area = count, fill = ChestPainType, label = ChestPainType)) +
   geom_treemap() +
-  geom_treemap_text() + scale_fill_manual(breaks = chestPainWithHD$ChestPainType, values = c("#2CF6B3", "#ECB0E1","#C9DDFF", "#DE6C83"))
+  geom_treemap_text() + scale_fill_manual(breaks = chestPainWithHD$ChestPainType, values = c("#2CF6B3", "#ECB0E1","#C9DDFF", "#DE6C83")) + ggtitle("Chest Pain Types for people with Heart Disease") + theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ```{r}
 ChestPainWithNoHD <- filter(heart, HeartDisease == 0) %>% group_by(ChestPainType) %>% summarise(count = n())
 ggplot(ChestPainWithNoHD, aes(area = count, fill = ChestPainType, label = ChestPainType)) +
   geom_treemap() +
-  geom_treemap_text() + scale_fill_manual(breaks = ChestPainWithNoHD$ChestPainType, values = c("#2CF6B3", "#ECB0E1","#C9DDFF", "#DE6C83"))
+  geom_treemap_text() + scale_fill_manual(breaks = ChestPainWithNoHD$ChestPainType, values = c("#2CF6B3", "#ECB0E1","#C9DDFF", "#DE6C83")) + ggtitle("Chest Pain Types for people with no Heart Disease") + theme(plot.title = element_text(hjust = 0.5))
 ```
 Is possible to see that the distribution of Chest Pain Types are different for the occurrence of heart problems.
 
@@ -166,8 +203,8 @@ ggplot(heart, aes(x=HeartDisease, y=RestingBP, group = HeartDisease, fill = Hear
 This variable, as shown by Boruta, is not the relevant for the prediction of our target. 
 
 ```{r}
-ggplot(heart, aes(x=FastingBS, group = HeartDisease, fill = HeartDisease)) + geom_bar(stat = "count") + theme_minimal()
-
+ggplot(heart, aes(x=FastingBS, group = HeartDisease, fill = HeartDisease)) + geom_bar(stat = "count") + theme_minimal() +
+  ggtitle("Fasting BS Distribuition") + theme(plot.title = element_text(hjust = 0.5))
 ```
 Here we can see that there is no use for this one here, the similarity for no heart problems and FastingBS is high, see:
 
@@ -178,13 +215,14 @@ jaccard
 As the similarity found above was around 50, we can't take any meaningful insights to say if the person has or hasn't heart problems.
 
 ```{r}
-ggplot(heart, aes(x=HeartDisease, y=Oldpeak, group = HeartDisease,  fill = HeartDisease)) + geom_boxplot() + theme_minimal() + scale_fill_manual(breaks = heart$HeartDisease, values = c("#C9DDFF", "#DE6C83")) + ylab("OldPeak")
+ggplot(heart, aes(x=HeartDisease, y=Oldpeak, group = HeartDisease,  fill = HeartDisease)) + geom_boxplot() + theme_minimal() + scale_fill_manual(breaks = heart$HeartDisease, values = c("#C9DDFF", "#DE6C83")) + ylab("OldPeak") +
+  ggtitle("Old Peak for Heart Disease") + theme(plot.title = element_text(hjust = 0.5))
 ```
 
 The OldPeak variable has a significant change whether the person has or not heart problems. 
 
 ```{r}
-ggplot(heart, aes(x=ExerciseAngina, fill = HeartDisease)) + geom_bar()
+ggplot(heart, aes(x=ExerciseAngina, fill = HeartDisease)) + geom_bar() + ggtitle("Exercise Angina for Heart Disease") + theme(plot.title = element_text(hjust = 0.5))
 ```
 Exercise Angina has an important distribuition, is possible to see that Y value has a strong link with having heart diseases.
 
@@ -209,6 +247,8 @@ MaxHR looks promising, but let's see the statistical importance for the model.
 ggplot(heart, aes(x=RestingECG, fill = RestingECG)) + geom_bar() + facet_grid(~ HeartDisease) 
 ```
 
+Not good to see frequency distribuition...
+
 ```{r}
 RestingECG <- heart %>% group_by(RestingECG, HeartDisease) %>% 
                   summarise(count = n())
@@ -219,33 +259,31 @@ ggplot(RestingECG,
            position = "dodge")
 ```
 
-```{r}
+Better now. Not that much influence over heart disease class.
 
+```{r}
 ContCoef(heart$HeartDisease, heart$RestingECG, correct = TRUE)
 ```
-The correlation looks low and the plots shows similar distribution for both groups on that variable. 
-
+The correlation looks low and the plots shows similar frequency distribution for both groups on that variable. 
 
 ## Prediction
 
 Split data between train and test sets:
 
 ```{r}
-set.seed(133)
+set.seed(1234)
 split <- sample.split(heart$HeartDisease, SplitRatio = 0.8)
 
 train_reg <- subset(heart, split == "TRUE")
 test_reg <- subset(heart, split == "FALSE")
 ```
 
-Input the most important features:
+Input the potential most important features:
 ```{r}
 logistic_model <- glm(HeartDisease ~ ST_Slope + Oldpeak + Sex + Age + ExerciseAngina + ChestPainType,
                       data = train_reg,
                       family = "binomial")
-```
 
-```{r}
 summary(logistic_model)
 ```
 For this model, we see symmetrical residuals and the variable age not being that significant for the model. The other ones, the Wald's Test values are greater than two standard deviations away from 0 and p-values smaller than 0.05. Therefore, they are significant to the model.
@@ -262,52 +300,51 @@ paste('P-value: ')
 ```
 Overall effect size of 0.49 and a really small p-value meaning that the relationship between those variables are not due to chance.
 
-As the topic is heart disease, I changed the threshold sensitivity so the false negatives will be as low as possible.
-```{r}
-predict_reg <- predict(logistic_model, 
-                       test_reg, type = "response")
-predict_reg <- ifelse(predict_reg >0.1, 1, 0)
+```{r message=FALSE, warning=FALSE}
+library(pROC)
+predict_reg <- predict(logistic_model, test_reg, type="response")
 
+par(pty = "s")
+roc(test_reg$HeartDisease, predict_reg, plot=TRUE, legacy.axes=TRUE, percent = TRUE,
+    xlab="False Positive Rate Percentage", ylab="True Positive Percentage Rate", col="red", print.auc=TRUE)
 ```
 
-ROC and AUC
+```{r message=FALSE, warning=FALSE}
+roc.info <- roc(test_reg$HeartDisease, predict_reg, legacy.axes=TRUE)
+roc.df <- data.frame(
+  tpp=roc.info$sensitivities*100,
+  fpp=(1- roc.info$specificities)*100,
+  thresholds=roc.info$thresholds
+)
 
-```{r}
-
-ROCPred <- prediction(predict_reg, test_reg$HeartDisease) 
-ROCPer <- performance(ROCPred, measure = "tpr", 
-                             x.measure = "fpr")
-   
-auc <- performance(ROCPred, measure = "auc")
-auc <- auc@y.values[[1]]
-
-plot(ROCPer, colorize = TRUE, 
-     print.cutoffs.at = seq(0.1, by = 0.1), 
-     main = "ROC CURVE")
-abline(a = 0, b = 1)
-   
-auc <- round(auc, 4)
-legend(.6, .4, auc, title = "AUC", cex = 1) 
+roc.df %>% filter(roc.df$tpp > 90, roc.df$tpp < 95)
 ```
 
-The AUC for a higher sensitivity (0.5) is slight higher, but with way more false negatives. 
-
-
-```{r}
-table(test_reg$HeartDisease, predict_reg)
-```
-Only one false negative.
+As the topic is sensitive and false negatives are dangerous, decreasing the threshold is important. Making it larger can clearly decrease TP percentage, making FN percentage increase. Therefore, fixing it to $0.1$ shows a good choice to take: 
 
 ```{r}
-missing_classerr <- mean(predict_reg != test_reg$HeartDisease)
-print(paste('Accuracy =', 1 - missing_classerr))
+result <- ifelse(predict_reg > 0.1, 1, 0)
+confMatrix <- table(test_reg$HeartDisease, result)
+confMatrix
 ```
-Good accuracy, could be better with higher sensitivity, but due to lower false positives.
+
+With only one False Negative, recall increases significantly and accuracy drops. But that is a more realistic prediction for this scenario.
+
+```{r}
+accuracy <- (confMatrix[1,1] + confMatrix[2,2])/(sum(confMatrix))
+accuracy
+precicion <- (confMatrix[2,2])/(confMatrix[2,2] + confMatrix[1,2])
+precicion
+recall <- (confMatrix[2,2])/(confMatrix[2,1] + confMatrix[2,2])
+recall
+f1 <- 2 * (precicion * recall) / (precicion + recall)
+f1
+```
 
 ```{r}
 predicted.data <- data.frame(
-  probability.of.hd = logistic_model$fitted.values, 
-  hd = train_reg$HeartDisease)
+  probability.of.hd = predict_reg, 
+  hd = test_reg$HeartDisease)
 
 predicted.data <- predicted.data[order(predicted.data$probability.of.hd, decreasing = FALSE),]
 predicted.data$rank <- 1:nrow(predicted.data)
@@ -317,19 +354,23 @@ ggplot(data=predicted.data, aes(x=rank, y=probability.of.hd)) + geom_point(aes(c
 
 ```
 
-### Practicing k-fold
+The chart gives a good logistic regression overview, as it shows the $0.1$ threshold and and the values that were predicted being above or below it (just a cooler way to see confusion matrix).
+
+### Running k-fold
 
 
 ```{r}
 library(caret)
 set.seed(123)
+levels(heart$HeartDisease) <- c("neg", "pos")
+train_control <- trainControl(method = 'cv', number = 5, classProbs=TRUE, summaryFunction = customSummary)
 
-train_control <- trainControl(method = 'cv', number = 5)
 
 model <- train(HeartDisease ~ Age + Sex + ChestPainType + ExerciseAngina + Oldpeak + ST_Slope,
                data = heart, method = "glm", family = "binomial", trControl = train_control)
+
 print(model)
 ```
 
-Good accuracy.
+For maximum Sensitivity, the code tries to find the threshold for that optimal measure. Therefore, after running this K-Fold, we can see that we are able to see that we maintain acceptable accuracy and precision while preserving Sensitivity rule for our case.
 
