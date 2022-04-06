@@ -86,7 +86,7 @@ Taking a glimpse into the data summary at first
 ```{r}
 skim(heart)
 ```
-
+Note that there is no critical imbalance between the target variable distribution. That is important for the prediction phase.
 Here, we can see that some data has not it's ideal values, like: Cholesterol and FastingBP.
 Digging deeper into it:
 
